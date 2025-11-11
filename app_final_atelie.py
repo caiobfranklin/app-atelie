@@ -1,4 +1,4 @@
-# --- Importações ---
+## --- Importações ---
 import streamlit as st
 from datetime import date
 import json
@@ -6,7 +6,6 @@ from fpdf import FPDF
 import os 
 import uuid
 from PIL import Image
-# Linha 9 (CORRIGIDA):
 from supabase import create_client, Client
 import io
 
@@ -16,14 +15,13 @@ try:
     SUPABASE_KEY = st.secrets["supabase_key"]
 except (KeyError, FileNotFoundError):
     st.warning("Não foi possível ler os 'secrets' do Streamlit. A usar chaves locais (se definidas).")
+    # PREENCHA COM AS SUAS CHAVES PARA TESTAR LOCALMENTE
     SUPABASE_URL = "https://jlrzbcighlymiibcvhte.supabase.co"
     SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpscnpiY2lnaGx5bWlpYmN2aHRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI3OTQ2MjgsImV4cCI6MjA3ODM3MDYyOH0.jdhzdanH1-IZeTI-auxkV_rFDQ4U91W2v48pooQMBCs"
     
 NOME_BUCKET_FOTOS = "fotos-pecas"
 
 # --- Gestão de Estado (ATUALIZADO) ---
-# 'user' guarda os dados (email, id)
-# 'session' guarda a autenticação (o token)
 if 'user' not in st.session_state:
     st.session_state.user = None
 if 'session' not in st.session_state:
@@ -35,7 +33,6 @@ if 'inventario' not in st.session_state:
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
-    # --- A CORREÇÃO MÁGICA ESTÁ AQUI ---
     # Se já temos uma sessão guardada, diz ao cliente para usá-la.
     if st.session_state.session:
         supabase.auth.set_session(
@@ -46,17 +43,19 @@ except Exception as e:
     st.error(f"Erro ao ligar ao Supabase: {e}")
     st.stop()
 
-# --- Parte 2: Definição das Constantes (Idêntica) ---
+# --- Parte 2: Definição das Constantes ---
 PRECO_BISCOITO_POR_KG = 13.0
 PRECO_ESMALTE_POR_CM3 = 0.013
 PRECO_ARGILA_ATELIE_KG = 7.0
 
-# --- Parte 3: A "Classe" Peca (Idêntica) ---
+# --- Parte 3: A "Classe" Peca ---
 class Peca:
-    # (Esta classe é 100% idêntica à versão 9.1)
+    """O "molde" para cada peça de cerâmica com as regras 9.0."""
+    
     def __init__(self, data_producao, nome_pessoa, tipo_peca, peso_kg, altura_cm, largura_cm, profundidade_cm, 
                  tipo_argila='nenhuma', preco_argila_propria=0.0, 
                  image_path=None, peca_id=None, user_id=None):
+        
         self.id = peca_id if peca_id else str(uuid.uuid4())
         self.user_id = user_id
         self.data_producao = data_producao
@@ -70,13 +69,20 @@ class Peca:
         self.preco_argila_propria = float(preco_argila_propria) if self.tipo_argila == 'propria' else 0.0
         self.data_registro = date.today().strftime("%d/%m/%Y")
         self.image_path = image_path
-        self.custo_argila = 0.0; self.custo_biscoito = 0.0; self.custo_esmalte = 0.0; self.total = 0.0
+        
+        self.custo_argila = 0.0
+        self.custo_biscoito = 0.0
+        self.custo_esmalte = 0.0
+        self.total = 0.0
         self.recalcular_custos() 
 
     def recalcular_custos(self):
-        if self.tipo_argila == 'atelie': self.custo_argila = self.peso_kg * PRECO_ARGILA_ATELIE_KG
-        elif self.tipo_argila == 'propria': self.custo_argila = self.peso_kg * self.preco_argila_propria
-        else: self.custo_argila = 0.0
+        if self.tipo_argila == 'atelie':
+            self.custo_argila = self.peso_kg * PRECO_ARGILA_ATELIE_KG
+        elif self.tipo_argila == 'propria':
+            self.custo_argila = self.peso_kg * self.preco_argila_propria
+        else:
+            self.custo_argila = 0.0
         self.custo_biscoito = self.peso_kg * PRECO_BISCOITO_POR_KG
         volume_cm3 = self.altura_cm * self.largura_cm * self.profundidade_cm
         self.custo_esmalte = volume_cm3 * PRECO_ESMALTE_POR_CM3
@@ -110,8 +116,7 @@ class Peca:
         peca.total = float(data_dict.get('total', 0))
         return peca
 
-# --- Parte 4: Funções de Dados (Idênticas) ---
-# (Estas funções agora funcionam porque o cliente 'supabase' está autenticado)
+# --- Parte 4: Funções de Dados ---
 def carregar_dados():
     try:
         response = supabase.table('pecas').select('*').order('created_at', desc=True).execute()
@@ -124,7 +129,7 @@ def carregar_dados():
     return []
 
 def salvar_nova_peca(nova_peca: Peca, uploaded_file):
-    user_id = st.session_state.user['id'] # Pega o ID do utilizador logado
+    user_id = st.session_state.user['id']
     nova_peca.user_id = user_id
     image_db_path = None
     if uploaded_file is not None:
@@ -165,7 +170,7 @@ def excluir_peca_db(peca: Peca):
         st.error(f"Erro ao excluir os dados da peça: {e}")
         return False
 
-# --- Parte 5: Funções de Geração (Idênticas) ---
+# --- Parte 5: Funções de Geração ---
 def get_public_url(peca: Peca):
     if not peca.image_path:
         return None
@@ -176,7 +181,6 @@ def get_public_url(peca: Peca):
         return None
 
 def gerar_relatorio_pdf(lista_de_pecas):
-    # (Função idêntica à V9.1)
     if not lista_de_pecas: return None
     custo_geral_total = 0.0
     totais_por_pessoa = {}
@@ -232,7 +236,7 @@ def gerar_relatorio_pdf(lista_de_pecas):
         st.error(f"Erro ao gerar PDF: {e}"); return None
 
 
-# --- Parte 6: A INTERFACE WEB (V9.2 - Layout com LOGIN) ---
+# --- Parte 6: A INTERFACE WEB (V9.3) ---
 
 st.set_page_config(page_title="Gestão BAL", layout="wide", page_icon="🏺")
 
@@ -242,7 +246,7 @@ if st.session_state.user is None:
     st.title("BAL Cerâmica")
     st.write("Bem-vindo ao sistema de gestão de custos do ateliê.")
     
-    LOGO_URL = "https://jlrzbcighlymiibcvhte.supabase.co/storage/v1/object/public/fotos-pecas/logo-bal.jpg" # <-- SUBSTITUA PELA URL REAL
+    LOGO_URL = "https://jlrzbcighlymiibcvhte.supabase.co/storage/v1/object/public/fotos-pecas/logo-bal.jpg_SUA_URL_DA_LOGO_AQUI" # <-- SUBSTITUA PELA URL REAL
     
     if LOGO_URL.startswith("https://"):
         st.image(LOGO_URL, width=300)
@@ -262,14 +266,9 @@ if st.session_state.user is None:
                     st.error("Por favor, preencha todos os campos.")
                 else:
                     try:
-                        # Tenta fazer login
                         user_session = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                        
-                        # --- CORREÇÃO DE LOGIN ---
-                        st.session_state.user = user_session.user.dict() # Guarda os dados do utilizador
-                        st.session_state.session = user_session.session.dict() # Guarda o token
-                        # --- FIM DA CORREÇÃO ---
-                        
+                        st.session_state.user = user_session.user.dict()
+                        st.session_state.session = user_session.session.dict()
                         st.success("Login bem-sucedido!")
                         st.rerun()
                     except Exception as e:
@@ -287,12 +286,8 @@ if st.session_state.user is None:
                 else:
                     try:
                         user_session = supabase.auth.sign_up({"email": email, "password": password})
-                        
-                        # --- CORREÇÃO DE REGISTO ---
                         st.session_state.user = user_session.user.dict()
                         st.session_state.session = user_session.session.dict()
-                        # --- FIM DA CORREÇÃO ---
-                        
                         st.success("Conta criada com sucesso! A entrar...")
                         st.rerun()
                     except Exception as e:
@@ -314,14 +309,10 @@ else:
     pagina_selecionada = st.sidebar.radio("Navegue por:", pagina_opcoes, key="menu_radio")
     
     if st.sidebar.button("Terminar Sessão (Logout)"):
-        supabase.auth.sign_out() # O cliente 'supabase' já está autenticado
-        
-        # --- CORREÇÃO DE LOGOUT ---
+        supabase.auth.sign_out()
         st.session_state.user = None
-        st.session_state.session = None # Limpa o token
+        st.session_state.session = None
         st.session_state.inventario = []
-        # --- FIM DA CORREÇÃO ---
-        
         st.rerun()
 
     # --- Lógica das Páginas ---
@@ -360,7 +351,7 @@ else:
             else:
                 with st.spinner("A criar e salvar a nova peça..."):
                     nova_peca = Peca(
-                        data_producao=data_producao, nome_pessoa=nome_pessoa, tipo_peca=tipo_peça,
+                        data_producao=data_producao, nome_pessoa=nome_pessoa, tipo_peca=tipo_peca, # <-- CORRIGIDO
                         peso_kg=peso_kg, altura_cm=altura_cm, largura_cm=largura_cm,
                         profundidade_cm=profundidade_cm, 
                         tipo_argila=tipo_argila_final, preco_argila_propria=preco_argila_propria_input
@@ -444,7 +435,8 @@ else:
                         custo_esmalte_str = f"R$ {peca.custo_esmalte:.2f}".replace('.', ',')
                         custo_argila_str = f"R$ {peca.custo_argila:.2f}".replace('.', ',')
                         st.write(f"Custos: **Queima de biscoito** ({custo_biscoito_str}), **Queima de esmalte** ({custo_esmalte_str}), **Argila** ({custo_argila_str})")
-                        total_peca_str = f"R* {total_peca:.2f}".replace('.', ',')
+                        
+                        total_peca_str = f"R$ {total_peca:.2f}".replace('.', ',') # <-- CORRIGIDO (R$)
                         st.subheader(f"Total da Peça: {total_peca_str}")
                     with col2:
                         image_url = get_public_url(peca)
@@ -452,7 +444,7 @@ else:
                         else: st.caption("Sem foto")
                 
                 custo_geral_total += total_peca
-                total_anterior_pessoa = totais_por_pessoa.get(nome, 0.0)
+                total_anterior_pessoa = totais_por_pessoa.get(nome, 0.0) # <-- CORRIGIDO (totais_)
                 totais_por_pessoa[nome] = total_anterior_pessoa + total_peca
             
             st.divider()
@@ -466,9 +458,8 @@ else:
             try:
                 totais_formatados = {
                     "Pessoa": totais_por_pessoa.keys(),
-                    "Valor Total": [f"R* {v:.2f}".replace('.', ',') for v in totais_por_pessoa.values()]
+                    "Valor Total": [f"R$ {v:.2f}".replace('.', ',') for v in totais_por_pessoa.values()] # <-- CORRIGIDO (R$)
                 }
                 st.dataframe(totais_formatados, use_container_width=True)
             except Exception:
                 st.dataframe(totais_por_pessoa, use_container_width=True)
-                
