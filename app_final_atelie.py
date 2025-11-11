@@ -155,7 +155,8 @@ def get_public_url(image_path):
         return None
 
 def gerar_relatorio_pdf(lista_de_pecas):
-    # (Função idêntica à V8.3)
+    """Gera um PDF com URLs de imagem do Supabase."""
+    
     if not lista_de_pecas: return None
     custo_geral_total = 0.0
     totais_por_pessoa = {}
@@ -164,15 +165,29 @@ def gerar_relatorio_pdf(lista_de_pecas):
         custo_geral_total += total_peca
         total_anterior_pessoa = totais_por_pessoa.get(nome, 0.0)
         totais_por_pessoa[nome] = total_anterior_pessoa + total_peca
+    
     pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.add_page(); pdf.set_font('Arial', 'B', 16)
     pdf.cell(0, 10, 'Relatorio de Producao do Atelie', ln=True, align='C'); pdf.ln(5)
+    
     for peca in lista_de_pecas:
+        # Guarda a posição Y inicial deste item
+        y_antes = pdf.get_y()
+        
         pdf.set_font('Arial', '', 10); image_url = get_public_url(peca.image_path)
+        
         if image_url:
             try:
-                y_antes = pdf.get_y(); pdf.image(image_url, x=170, y=y_antes, w=30); pdf.set_auto_page_break(auto=False, margin=0)
-            except Exception as e: print(f"Erro ao adicionar imagem URL ao PDF: {e}")
+                # --- LINHA CORRIGIDA ---
+                # Força a imagem a caber num caixote de 30mm (largura) x 25mm (altura)
+                # Isto VAI distorcer a imagem, mas VAI garantir que o layout não quebra.
+                pdf.image(image_url, x=170, y=y_antes, w=30, h=25) 
+                
+                pdf.set_auto_page_break(auto=False, margin=0)
+            except Exception as e: 
+                print(f"Erro ao adicionar imagem URL ao PDF: {e}")
+        
+        # Desenha o texto (começando em y_antes)
         pdf.set_font('Arial', 'B', 10)
         linha1 = f"Data Prod.: {peca.data_producao} | Pessoa: {peca.nome_pessoa} | Peca: {peca.tipo_peca}"
         pdf.multi_cell(160, 5, linha1.encode('latin-1', 'replace').decode('latin-1'), border=0, ln=True)
@@ -183,7 +198,20 @@ def gerar_relatorio_pdf(lista_de_pecas):
         pdf.multi_cell(160, 5, linha3.encode('latin-1', 'replace').decode('latin-1'), border=0, ln=True)
         linha4 = f"  (Registrado em: {peca.data_registro})"
         pdf.multi_cell(160, 5, linha4.encode('latin-1', 'replace').decode('latin-1'), border=0, ln=True)
+        
+        # Guarda a posição Y final do texto
+        y_depois_texto = pdf.get_y()
+        
+        # A altura da imagem é 25mm. O 'y' da imagem é y_antes.
+        y_depois_imagem = y_antes + 25 
+        
+        # Define a posição Y final como o MÁXIMO entre a altura do texto e a altura da imagem
+        pdf.set_y(max(y_depois_texto, y_depois_imagem))
+        
+        # Desenha a linha e o espaçamento
         pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y()); pdf.ln(3)
+
+    # --- Bloco de Resumo (sem alterações) ---
     pdf.ln(10); pdf.set_font('Arial', 'B', 12); pdf.cell(0, 5, '--- RESUMO TOTAL ---', ln=True, align='C')
     pdf.set_font('Arial', '', 10); pdf.cell(0, 5, f"Total de pecas: {len(lista_de_pecas)}", ln=True)
     pdf.cell(0, 5, f"CUSTO GERAL TOTAL: R$ {custo_geral_total:.2f}", ln=True); pdf.ln(5)
@@ -192,6 +220,7 @@ def gerar_relatorio_pdf(lista_de_pecas):
     for nome, total_pessoa in totais_por_pessoa.items():
         linha_total_pessoa = f"  {nome}: R$ {total_pessoa:.2f}"
         pdf.cell(0, 5, linha_total_pessoa.encode('latin-1', 'replace').decode('latin-1'), ln=True)
+    
     nome_arquivo_pdf = f"relatorio_atelie_{date.today().strftime('%Y-%m-%d')}.pdf"
     try:
         pdf.output(nome_arquivo_pdf); return nome_arquivo_pdf
