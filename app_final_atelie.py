@@ -6,40 +6,56 @@ from fpdf import FPDF
 import os 
 import uuid
 from PIL import Image
-from supabase import create_client, Client
+from supabase import create_client, Client, session
 import io
 
-# --- Parte 1: Ligação ao SUPABASE ---
+# --- Parte 1: Ligação ao SUPABASE (ATUALIZADA) ---
 try:
     SUPABASE_URL = st.secrets["supabase_url"]
     SUPABASE_KEY = st.secrets["supabase_key"]
 except (KeyError, FileNotFoundError):
     st.warning("Não foi possível ler os 'secrets' do Streamlit. A usar chaves locais (se definidas).")
-    # PREENCHA COM AS SUAS CHAVES PARA TESTAR LOCALMENTE
     SUPABASE_URL = "https://jlrzbcighlymiibcvhte.supabase.co"
     SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpscnpiY2lnaGx5bWlpYmN2aHRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI3OTQ2MjgsImV4cCI6MjA3ODM3MDYyOH0.jdhzdanH1-IZeTI-auxkV_rFDQ4U91W2v48pooQMBCs"
     
 NOME_BUCKET_FOTOS = "fotos-pecas"
 
+# --- Gestão de Estado (ATUALIZADO) ---
+# 'user' guarda os dados (email, id)
+# 'session' guarda a autenticação (o token)
+if 'user' not in st.session_state:
+    st.session_state.user = None
+if 'session' not in st.session_state:
+    st.session_state.session = None
+if 'inventario' not in st.session_state:
+    st.session_state.inventario = []
+
+# --- Criação do Cliente Supabase (ATUALIZADO) ---
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    
+    # --- A CORREÇÃO MÁGICA ESTÁ AQUI ---
+    # Se já temos uma sessão guardada, diz ao cliente para usá-la.
+    if st.session_state.session:
+        supabase.auth.set_session(
+            st.session_state.session['access_token'], 
+            st.session_state.session['refresh_token']
+        )
 except Exception as e:
     st.error(f"Erro ao ligar ao Supabase: {e}")
     st.stop()
 
-# --- Parte 2: Definição das Constantes ---
+# --- Parte 2: Definição das Constantes (Idêntica) ---
 PRECO_BISCOITO_POR_KG = 13.0
 PRECO_ESMALTE_POR_CM3 = 0.013
 PRECO_ARGILA_ATELIE_KG = 7.0
 
-# --- Parte 3: A "Classe" Peca (Idêntica à V9.0) ---
+# --- Parte 3: A "Classe" Peca (Idêntica) ---
 class Peca:
-    """O "molde" para cada peça de cerâmica com as regras 9.0."""
-    
+    # (Esta classe é 100% idêntica à versão 9.1)
     def __init__(self, data_producao, nome_pessoa, tipo_peca, peso_kg, altura_cm, largura_cm, profundidade_cm, 
                  tipo_argila='nenhuma', preco_argila_propria=0.0, 
                  image_path=None, peca_id=None, user_id=None):
-        
         self.id = peca_id if peca_id else str(uuid.uuid4())
         self.user_id = user_id
         self.data_producao = data_producao
@@ -53,20 +69,13 @@ class Peca:
         self.preco_argila_propria = float(preco_argila_propria) if self.tipo_argila == 'propria' else 0.0
         self.data_registro = date.today().strftime("%d/%m/%Y")
         self.image_path = image_path
-        
-        self.custo_argila = 0.0
-        self.custo_biscoito = 0.0
-        self.custo_esmalte = 0.0
-        self.total = 0.0
+        self.custo_argila = 0.0; self.custo_biscoito = 0.0; self.custo_esmalte = 0.0; self.total = 0.0
         self.recalcular_custos() 
 
     def recalcular_custos(self):
-        if self.tipo_argila == 'atelie':
-            self.custo_argila = self.peso_kg * PRECO_ARGILA_ATELIE_KG
-        elif self.tipo_argila == 'propria':
-            self.custo_argila = self.peso_kg * self.preco_argila_propria
-        else:
-            self.custo_argila = 0.0
+        if self.tipo_argila == 'atelie': self.custo_argila = self.peso_kg * PRECO_ARGILA_ATELIE_KG
+        elif self.tipo_argila == 'propria': self.custo_argila = self.peso_kg * self.preco_argila_propria
+        else: self.custo_argila = 0.0
         self.custo_biscoito = self.peso_kg * PRECO_BISCOITO_POR_KG
         volume_cm3 = self.altura_cm * self.largura_cm * self.profundidade_cm
         self.custo_esmalte = volume_cm3 * PRECO_ESMALTE_POR_CM3
@@ -100,7 +109,8 @@ class Peca:
         peca.total = float(data_dict.get('total', 0))
         return peca
 
-# --- Parte 4: Funções de Dados (Idênticas à V9.0) ---
+# --- Parte 4: Funções de Dados (Idênticas) ---
+# (Estas funções agora funcionam porque o cliente 'supabase' está autenticado)
 def carregar_dados():
     try:
         response = supabase.table('pecas').select('*').order('created_at', desc=True).execute()
@@ -108,13 +118,12 @@ def carregar_dados():
         if dados:
             return [Peca.from_dict(d) for d in dados]
     except Exception as e:
-        if "JWT" in str(e): 
-            return []
+        if "JWT" in str(e): return []
         st.error(f"Erro ao carregar dados: {e}")
     return []
 
 def salvar_nova_peca(nova_peca: Peca, uploaded_file):
-    user_id = st.session_state.user.id
+    user_id = st.session_state.user['id'] # Pega o ID do utilizador logado
     nova_peca.user_id = user_id
     image_db_path = None
     if uploaded_file is not None:
@@ -155,8 +164,7 @@ def excluir_peca_db(peca: Peca):
         st.error(f"Erro ao excluir os dados da peça: {e}")
         return False
 
-# --- Parte 5: Funções de Geração (ATUALIZADAS para V9.1) ---
-
+# --- Parte 5: Funções de Geração (Idênticas) ---
 def get_public_url(peca: Peca):
     if not peca.image_path:
         return None
@@ -167,7 +175,7 @@ def get_public_url(peca: Peca):
         return None
 
 def gerar_relatorio_pdf(lista_de_pecas):
-    """Gera um PDF com URLs de imagem e formatação V9.1."""
+    # (Função idêntica à V9.1)
     if not lista_de_pecas: return None
     custo_geral_total = 0.0
     totais_por_pessoa = {}
@@ -184,51 +192,38 @@ def gerar_relatorio_pdf(lista_de_pecas):
     for peca in lista_de_pecas:
         pdf.set_font('Arial', '', 10); 
         image_url = get_public_url(peca)
-        y_antes = pdf.get_y() # Guarda Y inicial
-        
+        y_antes = pdf.get_y()
         if image_url:
             try:
                 pdf.image(image_url, x=170, y=y_antes, w=30, h=25); pdf.set_auto_page_break(auto=False, margin=0)
             except Exception as e: print(f"Erro ao adicionar imagem URL ao PDF: {e}")
-        
         pdf.set_font('Arial', 'B', 10)
         linha1 = f"Data Prod.: {peca.data_producao} | Pessoa: {peca.nome_pessoa} | Peca: {peca.tipo_peca}"
         pdf.multi_cell(160, 5, linha1.encode('latin-1', 'replace').decode('latin-1'), border=0, ln=True)
         pdf.set_font('Arial', '', 10)
-        
-        # --- ALTERAÇÃO 3 (Nomes e Formatação) ---
         custo_biscoito_str = f"R$ {peca.custo_biscoito:.2f}".replace('.', ',')
         custo_esmalte_str = f"R$ {peca.custo_esmalte:.2f}".replace('.', ',')
         custo_argila_str = f"R$ {peca.custo_argila:.2f}".replace('.', ',')
         linha2 = f"  Custos: Queima de biscoito({custo_biscoito_str}), Queima de esmalte({custo_esmalte_str}), Argila({custo_argila_str})"
         pdf.multi_cell(160, 5, linha2.encode('latin-1', 'replace').decode('latin-1'), border=0, ln=True)
-        
         total_peca_str = f"R$ {peca.total:.2f}".replace('.', ',')
         linha3 = f"  >> Total da Peca: {total_peca_str}"
         pdf.multi_cell(160, 5, linha3.encode('latin-1', 'replace').decode('latin-1'), border=0, ln=True)
-        # --- FIM DA ALTERAÇÃO 3 ---
-        
         linha4 = f"  (Registrado em: {peca.data_registro})"
         pdf.multi_cell(160, 5, linha4.encode('latin-1', 'replace').decode('latin-1'), border=0, ln=True)
-        
         y_depois_texto = pdf.get_y(); y_depois_imagem = y_antes + 25 
         pdf.set_y(max(y_depois_texto, y_depois_imagem))
         pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y()); pdf.ln(3)
-
-    # --- Bloco de Resumo (com Formatação) ---
     pdf.ln(10); pdf.set_font('Arial', 'B', 12); pdf.cell(0, 5, '--- RESUMO TOTAL ---', ln=True, align='C')
     pdf.set_font('Arial', '', 10); pdf.cell(0, 5, f"Total de pecas: {len(lista_de_pecas)}", ln=True)
-    
     custo_geral_str = f"R$ {custo_geral_total:.2f}".replace('.', ',')
     pdf.cell(0, 5, f"CUSTO GERAL TOTAL: {custo_geral_str}", ln=True); pdf.ln(5)
-    
     pdf.set_font('Arial', 'B', 12); pdf.cell(0, 5, '--- RESUMO POR PESSOA ---', ln=True, align='C')
     pdf.set_font('Arial', '', 10)
     for nome, total_pessoa in totais_por_pessoa.items():
         total_pessoa_str = f"R$ {total_pessoa:.2f}".replace('.', ',')
         linha_total_pessoa = f"  {nome}: {total_pessoa_str}"
         pdf.cell(0, 5, linha_total_pessoa.encode('latin-1', 'replace').decode('latin-1'), ln=True)
-    
     nome_arquivo_pdf = f"relatorio_atelie_{date.today().strftime('%Y-%m-%d')}.pdf"
     try:
         pdf.output(nome_arquivo_pdf); return nome_arquivo_pdf
@@ -236,15 +231,9 @@ def gerar_relatorio_pdf(lista_de_pecas):
         st.error(f"Erro ao gerar PDF: {e}"); return None
 
 
-# --- Parte 6: A INTERFACE WEB (V9.1 - Layout com LOGIN) ---
+# --- Parte 6: A INTERFACE WEB (V9.2 - Layout com LOGIN) ---
 
 st.set_page_config(page_title="Gestão BAL", layout="wide", page_icon="🏺")
-
-# --- Gestão de Estado ---
-if 'user' not in st.session_state:
-    st.session_state.user = None
-if 'inventario' not in st.session_state:
-    st.session_state.inventario = []
 
 # --- PÁGINA 1: HUB DE AUTENTICAÇÃO (Login / Registo) ---
 if st.session_state.user is None:
@@ -272,8 +261,14 @@ if st.session_state.user is None:
                     st.error("Por favor, preencha todos os campos.")
                 else:
                     try:
+                        # Tenta fazer login
                         user_session = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                        st.session_state.user = user_session.user
+                        
+                        # --- CORREÇÃO DE LOGIN ---
+                        st.session_state.user = user_session.user.dict() # Guarda os dados do utilizador
+                        st.session_state.session = user_session.session.dict() # Guarda o token
+                        # --- FIM DA CORREÇÃO ---
+                        
                         st.success("Login bem-sucedido!")
                         st.rerun()
                     except Exception as e:
@@ -291,7 +286,12 @@ if st.session_state.user is None:
                 else:
                     try:
                         user_session = supabase.auth.sign_up({"email": email, "password": password})
-                        st.session_state.user = user_session.user
+                        
+                        # --- CORREÇÃO DE REGISTO ---
+                        st.session_state.user = user_session.user.dict()
+                        st.session_state.session = user_session.session.dict()
+                        # --- FIM DA CORREÇÃO ---
+                        
                         st.success("Conta criada com sucesso! A entrar...")
                         st.rerun()
                     except Exception as e:
@@ -306,19 +306,21 @@ else:
         with st.spinner("A carregar dados do seu ateliê..."):
             st.session_state.inventario = carregar_dados()
 
-    # --- O MENU (SIDEBAR) ---
     st.sidebar.title("Menu")
-    st.sidebar.write(f"Olá, {st.session_state.user.email}")
+    st.sidebar.write(f"Olá, {st.session_state.user['email']}")
     
-    # --- ALTERAÇÃO 1 (Ordem do Menu) ---
     pagina_opcoes = ["Adicionar Nova Peça", "Excluir Peça", "Ver Relatório Completo"]
     pagina_selecionada = st.sidebar.radio("Navegue por:", pagina_opcoes, key="menu_radio")
-    # --- FIM DA ALTERAÇÃO 1 ---
     
     if st.sidebar.button("Terminar Sessão (Logout)"):
-        supabase.auth.sign_out()
+        supabase.auth.sign_out() # O cliente 'supabase' já está autenticado
+        
+        # --- CORREÇÃO DE LOGOUT ---
         st.session_state.user = None
+        st.session_state.session = None # Limpa o token
         st.session_state.inventario = []
+        # --- FIM DA CORREÇÃO ---
+        
         st.rerun()
 
     # --- Lógica das Páginas ---
@@ -357,7 +359,7 @@ else:
             else:
                 with st.spinner("A criar e salvar a nova peça..."):
                     nova_peca = Peca(
-                        data_producao=data_producao, nome_pessoa=nome_pessoa, tipo_peca=tipo_peca,
+                        data_producao=data_producao, nome_pessoa=nome_pessoa, tipo_peca=tipo_peça,
                         peso_kg=peso_kg, altura_cm=altura_cm, largura_cm=largura_cm,
                         profundidade_cm=profundidade_cm, 
                         tipo_argila=tipo_argila_final, preco_argila_propria=preco_argila_propria_input
@@ -387,11 +389,8 @@ else:
                 image_url = get_public_url(peca_obj)
                 if image_url: st.image(image_url, width=200)
                 st.write(f"**Tipo:** {peca_obj.tipo_peca}"); st.write(f"**Pessoa:** {peca_obj.nome_pessoa}")
-                
-                # --- ALTERAÇÃO 3 (Formatação) ---
                 total_peca_str = f"R$ {peca_obj.total:.2f}".replace('.', ',')
                 st.write(f"**Custo Total:** {total_peca_str}"); st.divider()
-                # --- FIM DA ALTERAÇÃO 3 ---
                 
                 if st.button(f"Confirmar Exclusão Permanente de '{peca_obj.tipo_peca}'", type="primary"):
                     with st.spinner("Excluindo peça..."):
@@ -404,10 +403,6 @@ else:
     # PÁGINA 3: VER RELATÓRIO
     elif pagina_selecionada == "Ver Relatório Completo":
         st.header("Relatório de Produção")
-        
-        # --- ALTERAÇÃO 2 (Botão Removido) ---
-        # O botão 'Atualizar Dados' foi removido.
-        # --- FIM DA ALTERAÇÃO 2 ---
         
         inventario = st.session_state.inventario
         
@@ -444,43 +439,35 @@ else:
                     col1, col2 = st.columns([3, 1])
                     with col1:
                         st.write(f"**Peça:** {peca.tipo_peca} | **Pessoa:** {nome} | **Data:** {peca.data_producao}")
-                        
-                        # --- ALTERAÇÃO 3 (Nomes e Formatação) ---
                         custo_biscoito_str = f"R$ {peca.custo_biscoito:.2f}".replace('.', ',')
                         custo_esmalte_str = f"R$ {peca.custo_esmalte:.2f}".replace('.', ',')
                         custo_argila_str = f"R$ {peca.custo_argila:.2f}".replace('.', ',')
                         st.write(f"Custos: **Queima de biscoito** ({custo_biscoito_str}), **Queima de esmalte** ({custo_esmalte_str}), **Argila** ({custo_argila_str})")
-                        
-                        total_peca_str = f"R$ {total_peca:.2f}".replace('.', ',')
+                        total_peca_str = f"R* {total_peca:.2f}".replace('.', ',')
                         st.subheader(f"Total da Peça: {total_peca_str}")
-                        # --- FIM DA ALTERAÇÃO 3 ---
-                        
                     with col2:
                         image_url = get_public_url(peca)
                         if image_url: st.image(image_url, width=150)
                         else: st.caption("Sem foto")
                 
                 custo_geral_total += total_peca
-                total_anterior_pessoa = totals_por_pessoa.get(nome, 0.0)
+                total_anterior_pessoa = totais_por_pessoa.get(nome, 0.0)
                 totais_por_pessoa[nome] = total_anterior_pessoa + total_peca
             
             st.divider()
             st.subheader("Resumo Total (do Filtro)")
             col1, col2 = st.columns(2)
             col1.metric(label="Total de Peças na Seleção", value=len(lista_para_relatorio))
-            
-            # --- ALTERAÇÃO 3 (Formatação) ---
             custo_geral_str = f"R$ {custo_geral_total:.2f}".replace('.', ',')
             col2.metric(label="Custo Geral desta Seleção", value=f"{custo_geral_str}")
             
             st.subheader("Resumo por Pessoa (na Seleção)")
-            # Formata o dataframe para Reais (R$)
             try:
                 totais_formatados = {
                     "Pessoa": totais_por_pessoa.keys(),
-                    "Valor Total": [f"R$ {v:.2f}".replace('.', ',') for v in totais_por_pessoa.values()]
+                    "Valor Total": [f"R* {v:.2f}".replace('.', ',') for v in totais_por_pessoa.values()]
                 }
                 st.dataframe(totais_formatados, use_container_width=True)
-            except Exception: # Fallback
+            except Exception:
                 st.dataframe(totais_por_pessoa, use_container_width=True)
-            # --- FIM DA ALTERAÇÃO 3 ---
+                
