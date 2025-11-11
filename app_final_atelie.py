@@ -1,4 +1,4 @@
-## --- Importações ---
+# --- Importações ---
 import streamlit as st
 from datetime import date
 import json
@@ -6,7 +6,7 @@ from fpdf import FPDF
 import os 
 import uuid
 from PIL import Image
-from supabase import create_client, Client
+from supabase import create_client, Client # <-- CORRIGIDO (sem 'session')
 import io
 
 # --- Parte 1: Ligação ao SUPABASE (ATUALIZADA) ---
@@ -236,7 +236,7 @@ def gerar_relatorio_pdf(lista_de_pecas):
         st.error(f"Erro ao gerar PDF: {e}"); return None
 
 
-# --- Parte 6: A INTERFACE WEB (V9.3) ---
+# --- Parte 6: A INTERFACE WEB (V9.4) ---
 
 st.set_page_config(page_title="Gestão BAL", layout="wide", page_icon="🏺")
 
@@ -246,7 +246,8 @@ if st.session_state.user is None:
     st.title("BAL Cerâmica")
     st.write("Bem-vindo ao sistema de gestão de custos do ateliê.")
     
-    LOGO_URL = "https://jlrzbcighlymiibcvhte.supabase.co/storage/v1/object/public/fotos-pecas/logo-bal.jpg_SUA_URL_DA_LOGO_AQUI" # <-- SUBSTITUA PELA URL REAL
+    # PREENCHA COM A URL DA SUA LOGO
+    LOGO_URL = "https://jlrzbcighlymiibcvhte.supabase.co/storage/v1/object/public/fotos-pecas/logo-bal.jpg" 
     
     if LOGO_URL.startswith("https://"):
         st.image(LOGO_URL, width=300)
@@ -436,7 +437,7 @@ else:
                         custo_argila_str = f"R$ {peca.custo_argila:.2f}".replace('.', ',')
                         st.write(f"Custos: **Queima de biscoito** ({custo_biscoito_str}), **Queima de esmalte** ({custo_esmalte_str}), **Argila** ({custo_argila_str})")
                         
-                        total_peca_str = f"R$ {total_peca:.2f}".replace('.', ',') # <-- CORRIGIDO (R$)
+                        total_peca_str = f"R$ {total_peca:.2f}".replace('.', ',') # <-- CORRIGIDO
                         st.subheader(f"Total da Peça: {total_peca_str}")
                     with col2:
                         image_url = get_public_url(peca)
@@ -444,7 +445,7 @@ else:
                         else: st.caption("Sem foto")
                 
                 custo_geral_total += total_peca
-                total_anterior_pessoa = totais_por_pessoa.get(nome, 0.0) # <-- CORRIGIDO (totais_)
+                total_anterior_pessoa = totais_por_pessoa.get(nome, 0.0) # <-- CORRIGIDO
                 totais_por_pessoa[nome] = total_anterior_pessoa + total_peca
             
             st.divider()
@@ -458,7 +459,7 @@ else:
             try:
                 totais_formatados = {
                     "Pessoa": totais_por_pessoa.keys(),
-                    "Valor Total": [f"R$ {v:.2f}".replace('.', ',') for v in totais_por_pessoa.values()] # <-- CORRIGIDO (R$)
+                    "Valor Total": [f"R$ {v:.2f}".replace('.', ',') for v in totais_por_pessoa.values()] # <-- CORRIGIDO
                 }
                 st.dataframe(totais_formatados, use_container_width=True)
             except Exception:
