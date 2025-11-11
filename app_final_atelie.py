@@ -6,7 +6,8 @@ from fpdf import FPDF
 import os 
 import uuid
 from PIL import Image
-from supabase import create_client, Client, session
+# Linha 9 (CORRIGIDA):
+from supabase import create_client, Client
 import io
 
 # --- Parte 1: Ligação ao SUPABASE (ATUALIZADA) ---
