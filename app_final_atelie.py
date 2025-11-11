@@ -130,13 +130,18 @@ def salvar_nova_peca(nova_peca: Peca, uploaded_file):
         return False
 
 def excluir_peca_db(peca: Peca):
+    """Exclui a foto e os dados da peça do Supabase."""
+    # 1. Excluir a Foto (se existir)
     if peca.image_path:
         try:
             supabase.storage.from_(NOME_BUCKET_FOTOS).remove([peca.image_path])
         except Exception as e:
-            st.warning(f"Erro ao excluir a foto: {e}")
+            st.warning(f"Erro ao excluir a foto '{peca.image_path}', mas os dados serão excluídos. Erro: {e}")
+    
+    # 2. Excluir os Dados
     try:
-        supabase.table('peca').delete().eq('id', peca.id).execute()
+        # A LINHA CORRIGIDA ESTÁ AQUI:
+        supabase.table('pecas').delete().eq('id', peca.id).execute()
         return True
     except Exception as e:
         st.error(f"Erro ao excluir os dados da peça: {e}")
