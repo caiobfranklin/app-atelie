@@ -32,10 +32,12 @@ PRECO_ARGILA_ATELIE_KG = 7.0
 
 # --- Parte 3: A "Classe" Peca (Idêntica) ---
 class Peca:
-    # (Esta classe é 100% idêntica à versão 8.3)
+    """O "molde" para cada peça de cerâmica."""
+    
     def __init__(self, data_producao, nome_pessoa, tipo_peca, peso_kg, altura_cm, largura_cm, profundidade_cm, 
                  tipo_argila='nenhuma', preco_argila_propria=0.0, 
                  image_path=None, peca_id=None):
+        
         self.id = peca_id if peca_id else str(uuid.uuid4())
         self.data_producao = data_producao
         self.nome_pessoa = nome_pessoa
@@ -131,17 +133,13 @@ def salvar_nova_peca(nova_peca: Peca, uploaded_file):
 
 def excluir_peca_db(peca: Peca):
     """Exclui a foto e os dados da peça do Supabase."""
-    # 1. Excluir a Foto (se existir)
     if peca.image_path:
         try:
             supabase.storage.from_(NOME_BUCKET_FOTOS).remove([peca.image_path])
         except Exception as e:
-            st.warning(f"Erro ao excluir a foto '{peca.image_path}', mas os dados serão excluídos. Erro: {e}")
-    
-    # 2. Excluir os Dados
+            st.warning(f"Erro ao excluir a foto: {e}")
     try:
-        # A LINHA CORRIGIDA ESTÁ AQUI:
-        supabase.table('pecas').delete().eq('id', peca.id).execute()
+        supabase.table('pecas').delete().eq('id', peca.id).execute() # <-- CORRIGIDO
         return True
     except Exception as e:
         st.error(f"Erro ao excluir os dados da peça: {e}")
@@ -200,168 +198,197 @@ def gerar_relatorio_pdf(lista_de_pecas):
     except Exception as e:
         st.error(f"Erro ao gerar PDF: {e}"); return None
 
-# --- Parte 6: A INTERFACE WEB (Streamlit - ATUALIZADA) ---
+# --- Parte 6: A INTERFACE WEB (V8.6 - Layout com Landing Page) ---
 
-st.set_page_config(page_title="Gestão BAL", layout="wide", page_icon="🏺") # <-- Ícone adicionado!
+st.set_page_config(page_title="Gestão BAL", layout="wide", page_icon="🏺")
 
-# Título e Logo principal não são mais necessários aqui, vão para a Home
-# st.title("🏺 Sistema de Gestão de Custos do Ateliê (v8.5)")
+# --- Gestão de Estado ---
+# 1. Inicializa o estado: por defeito, mostra a 'home'
+if 'pagina_atual' not in st.session_state:
+    st.session_state.pagina_atual = "Home"
 
-if 'inventario' not in st.session_state:
-    with st.spinner("A carregar dados do armazém..."):
-        st.session_state.inventario = carregar_dados()
-
-st.sidebar.title("Menu") # <-- Título do menu
-pagina = st.sidebar.radio("Navegue por:", 
-                         ["Home", "Ver Relatório Completo", "Adicionar Nova Peça", "Excluir Peça"]) # <-- NOVA PÁGINA "Home"
-
-# --- NOVA PÁGINA 1: HOME ---
-if pagina == "Home":
+# --- PÁGINA 1: HOME / LANDING PAGE ---
+# Mostra a Home Page se for a página atual
+if st.session_state.pagina_atual == "Home":
+    
     st.title("BAL Cerâmica")
     st.write("Bem-vindo ao sistema de gestão de custos do ateliê.")
     
     # --- COLOQUE O LINK DA SUA LOGO AQUI ---
-    # 1. Suba a logo para o bucket 'fotos-pecas'
-    # 2. Obtenha a URL pública e cole-a abaixo
-    LOGO_URL = "https://jlrzbcighlymiibcvhte.supabase.co/storage/v1/object/public/fotos-pecas/logo-bal.jpg" # <-- SUBSTITUA PELA URL REAL
+    LOGO_URL = "https://...supabase.co/.../fotos-pecas/seu-logo.png" # <-- SUBSTITUA PELA URL REAL
     
-    # Tenta exibir a logo
     if LOGO_URL.startswith("https://"):
         st.image(LOGO_URL, width=300)
     else:
         st.warning("Para exibir a sua logo, por favor, atualize a 'LOGO_URL' no código.")
-        
-    st.info("Utilize as opções no **Menu** à esquerda para começar.")
-
-# --- PÁGINA 2: VER RELATÓRIO ---
-elif pagina == "Ver Relatório Completo":
-    st.header("Relatório de Produção")
     
-    if st.button("Atualizar Dados (Recarregar do Supabase)"):
+    # --- O BOTÃO "MENU" QUE VOCÊ PEDIU ---
+    if st.button("Aceder ao Menu"):
+        st.session_state.pagina_atual = "Ver Relatório Completo" # Manda para a página principal
+        st.rerun() # Força a recarga da app
+    
+    # Truque de CSS para esconder a sidebar SÓ nesta página
+    st.markdown("<style> [data-testid='stSidebar'] {display: none} </style>", unsafe_allow_html=True)
+
+# --- O APLICATIVO PRINCIPAL ---
+# Se 'pagina_atual' NÃO for 'Home', mostra o aplicativo normal.
+else:
+    # Carrega o inventário (só se for necessário)
+    if 'inventario' not in st.session_state:
         with st.spinner("A carregar dados do armazém..."):
             st.session_state.inventario = carregar_dados()
+
+    # --- O MENU (SIDEBAR) ---
+    st.sidebar.title("Menu")
     
-    inventario = st.session_state.inventario
+    # Lista de todas as páginas, incluindo "Home" para poder voltar
+    pagina_opcoes = ["Home", "Ver Relatório Completo", "Adicionar Nova Peça", "Excluir Peça"]
     
-    if not inventario:
-        st.warning("Nenhuma peça foi adicionada ao inventário ainda.")
-    else:
-        # (Resto da página de relatório é idêntico à V8.3)
-        st.subheader("Filtros do Relatório")
-        lista_pessoas = sorted(list(set([p.nome_pessoa for p in inventario if p.nome_pessoa])))
-        col1, col2 = st.columns(2)
-        filtro_pessoa = col1.multiselect("Filtrar por Pessoa:", options=lista_pessoas)
-        filtro_data = col2.text_input("Filtrar por Data de Produção (DD/MM/AAAA):")
+    # O 'radio' agora lê e escreve diretamente no session_state
+    pagina_selecionada = st.sidebar.radio(
+        "Navegue por:", 
+        pagina_opcoes, 
+        key="menu_radio", 
+        # Acha o índice da página atual para o 'radio' ficar correto
+        index=pagina_opcoes.index(st.session_state.pagina_atual) 
+    )
+    
+    # Se o utilizador mudar a página no 'radio', atualiza o estado
+    if pagina_selecionada != st.session_state.pagina_atual:
+        st.session_state.pagina_atual = pagina_selecionada
+        st.rerun()
+
+    # --- Lógica das Páginas ---
+    
+    # Se o utilizador clicar "Home" na sidebar, o 'if' principal (no topo)
+    # tratará de recarregar a app no modo "Home".
+
+    # PÁGINA 2: VER RELATÓRIO
+    if st.session_state.pagina_atual == "Ver Relatório Completo":
+        st.header("Relatório de Produção")
         
-        lista_para_relatorio = inventario
-        if filtro_pessoa:
-            lista_para_relatorio = [p for p in lista_para_relatorio if p.nome_pessoa in filtro_pessoa]
-        if filtro_data:
-            lista_para_relatorio = [p for p in lista_para_relatorio if p.data_producao == filtro_data]
-
-        st.subheader("Exportar Relatório")
-        nome_do_pdf = gerar_relatorio_pdf(lista_para_relatorio)
-        if nome_do_pdf:
-            try:
-                with open(nome_do_pdf, "rb") as f:
-                    st.download_button(label="Baixar Relatório em PDF", data=f, file_name=nome_do_pdf, mime="application/pdf")
-            except FileNotFoundError: st.error("Erro ao ler o ficheiro PDF gerado.")
-        st.divider()
-
-        st.subheader(f"Exibindo {len(lista_para_relatorio)} Peças")
-        custo_geral_total = 0.0
-        totais_por_pessoa = {}
-        for peca in lista_para_relatorio:
-            nome, total_peca = peca.nome_pessoa, peca.total
-            with st.container(border=True):
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.write(f"**Peça:** {peca.tipo_peca} | **Pessoa:** {nome} | **Data:** {peca.data_producao}")
-                    st.write(f"Custos: Biscoito(R$ {peca.custo_biscoito:.2f}), Esmalte(R$ {peca.custo_esmalte:.2f}), Argila(R$ {peca.custo_argila:.2f})")
-                    st.subheader(f"Total da Peça: R$ {total_peca:.2f}")
-                with col2:
-                    image_url = get_public_url(peca.image_path)
-                    if image_url: st.image(image_url, width=150)
-                    else: st.caption("Sem foto")
-            custo_geral_total += total_peca
-            total_anterior_pessoa = totais_por_pessoa.get(nome, 0.0)
-            totais_por_pessoa[nome] = total_anterior_pessoa + total_peca
-        st.divider()
-        st.subheader("Resumo Total (do Filtro)")
-        col1, col2 = st.columns(2)
-        col1.metric(label="Total de Peças na Seleção", value=len(lista_para_relatorio))
-        col2.metric(label="Custo Geral desta Seleção", value=f"R$ {custo_geral_total:.2f}")
-        st.subheader("Resumo por Pessoa (na Seleção)")
-        st.dataframe(totais_por_pessoa)
-
-# --- PÁGINA 3: ADICIONAR NOVA PEÇA ---
-elif pagina == "Adicionar Nova Peça":
-    st.header("Adicionar Nova Peça")
-    
-    with st.form(key="nova_peca_form", clear_on_submit=True):
-        st.subheader("Dados da Peça")
-        nome_pessoa = st.text_input("Quem produziu a peça?")
-        tipo_peca = st.text_input("Qual o tipo de peça? (Ex: Copo, Vaso)")
-        data_producao = st.text_input("Qual a data de produção? (DD/MM/AAAA)")
-        uploaded_file = st.file_uploader("Anexar foto da peça", type=["png", "jpg", "jpeg"])
-        st.subheader("Medidas")
-        peso_kg = st.number_input("Peso (kg)?", min_value=0.0, format="%.3f")
-        altura_cm = st.number_input("Altura (cm)?", min_value=0.0, format="%.2f")
-        largura_cm = st.number_input("Largura (cm)?", min_value=0.0, format="%.2f")
-        profundidade_cm = st.number_input("Profundidade (cm)?", min_value=0.0, format="%.2f")
-        st.subheader("Custos de Material")
-        tipo_argila_escolha = st.radio("Qual argila foi usada?",
-                                       ("Argila Própria", f"Argila do Ateliê (R$ {PRECO_ARGILA_ATELIE_KG}/kg)"), index=0)
-        preco_argila_propria_input = 0.0
-        if tipo_argila_escolha == "Argila Própria":
-            tipo_argila_final = 'propria'
-            preco_argila_propria_input = st.number_input("Preço do kg da sua argila? (R$)", min_value=0.0, format="%.2f")
+        if st.button("Atualizar Dados (Recarregar do Supabase)"):
+            with st.spinner("A carregar dados do armazém..."):
+                st.session_state.inventario = carregar_dados()
+        
+        inventario = st.session_state.inventario
+        
+        if not inventario:
+            st.warning("Nenhuma peça foi adicionada ao inventário ainda.")
         else:
-            tipo_argila_final = 'atelie'
-        
-        submit_button = st.form_submit_button(label="Adicionar e Salvar Peça")
+            # (Resto da página de relatório é idêntico)
+            st.subheader("Filtros do Relatório")
+            lista_pessoas = sorted(list(set([p.nome_pessoa for p in inventario if p.nome_pessoa])))
+            col1, col2 = st.columns(2)
+            filtro_pessoa = col1.multiselect("Filtrar por Pessoa:", options=lista_pessoas)
+            filtro_data = col2.text_input("Filtrar por Data de Produção (DD/MM/AAAA):")
+            lista_para_relatorio = inventario
+            if filtro_pessoa:
+                lista_para_relatorio = [p for p in lista_para_relatorio if p.nome_pessoa in filtro_pessoa]
+            if filtro_data:
+                lista_para_relatorio = [p for p in lista_para_relatorio if p.data_producao == filtro_data]
+            st.subheader("Exportar Relatório")
+            nome_do_pdf = gerar_relatorio_pdf(lista_para_relatorio)
+            if nome_do_pdf:
+                try:
+                    with open(nome_do_pdf, "rb") as f:
+                        st.download_button(label="Baixar Relatório em PDF", data=f, file_name=nome_do_pdf, mime="application/pdf")
+                except FileNotFoundError: st.error("Erro ao ler o ficheiro PDF gerado.")
+            st.divider()
+            st.subheader(f"Exibindo {len(lista_para_relatorio)} Peças")
+            custo_geral_total = 0.0
+            totais_por_pessoa = {}
+            for peca in lista_para_relatorio:
+                nome, total_peca = peca.nome_pessoa, peca.total
+                with st.container(border=True):
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.write(f"**Peça:** {peca.tipo_peca} | **Pessoa:** {nome} | **Data:** {peca.data_producao}")
+                        st.write(f"Custos: Biscoito(R$ {peca.custo_biscoito:.2f}), Esmalte(R$ {peca.custo_esmalte:.2f}), Argila(R$ {peca.custo_argila:.2f})")
+                        st.subheader(f"Total da Peça: R$ {total_peca:.2f}")
+                    with col2:
+                        image_url = get_public_url(peca.image_path)
+                        if image_url: st.image(image_url, width=150)
+                        else: st.caption("Sem foto")
+                custo_geral_total += total_peca
+                total_anterior_pessoa = totais_por_pessoa.get(nome, 0.0)
+                totais_por_pessoa[nome] = total_anterior_pessoa + total_peca
+            st.divider()
+            st.subheader("Resumo Total (do Filtro)")
+            col1, col2 = st.columns(2)
+            col1.metric(label="Total de Peças na Seleção", value=len(lista_para_relatorio))
+            col2.metric(label="Custo Geral desta Seleção", value=f"R$ {custo_geral_total:.2f}")
+            st.subheader("Resumo por Pessoa (na Seleção)")
+            st.dataframe(totais_por_pessoa)
 
-    if submit_button:
-        if not nome_pessoa or not tipo_peca or not data_producao or peso_kg == 0:
-            st.error("Por favor, preencha pelo menos o Nome, Tipo, Data e Peso (peso não pode ser zero).")
-        else:
-            with st.spinner("A criar e salvar a nova peça..."):
-                nova_peca = Peca(
-                    data_producao=data_producao, nome_pessoa=nome_pessoa, tipo_peca=tipo_peca,
-                    peso_kg=peso_kg, altura_cm=altura_cm, largura_cm=largura_cm,
-                    profundidade_cm=profundidade_cm, 
-                    tipo_argila=tipo_argila_final, preco_argila_propria=preco_argila_propria_input
-                )
-                if salvar_nova_peca(nova_peca, uploaded_file):
-                    st.success(f"✅ Peça '{nova_peca.tipo_peca}' adicionada e salva no Supabase!")
-                    st.balloons(); st.session_state.inventario.insert(0, nova_peca) 
-                else: st.error("Erro ao salvar os dados no Supabase.")
-
-# --- PÁGINA 4: EXCLUIR PEÇA ---
-elif pagina == "Excluir Peça":
-    st.header("Excluir Peça")
-    st.warning("Atenção: Esta ação é permanente e não pode ser desfeita.")
-    
-    inventario = st.session_state.inventario
-    
-    if not inventario:
-        st.info("Não há peças no inventário para excluir.")
-    else:
-        opcoes_pecas = {f"{p.data_producao} - {p.tipo_peca} (por {p.nome_pessoa})": p for p in inventario}
-        peca_selecionada_nome = st.selectbox("Selecione a peça que deseja excluir:", ["Selecione..."] + list(opcoes_pecas.keys()))
+    # PÁGINA 3: ADICIONAR NOVA PEÇA
+    elif st.session_state.pagina_atual == "Adicionar Nova Peça":
+        st.header("Adicionar Nova Peça")
         
-        if peca_selecionada_nome != "Selecione...":
-            peca_obj = opcoes_pecas[peca_selecionada_nome]
-            st.subheader("Você selecionou esta peça:")
-            image_url = get_public_url(peca_obj.image_path)
-            if image_url: st.image(image_url, width=200)
-            st.write(f"**Tipo:** {peca_obj.tipo_peca}"); st.write(f"**Pessoa:** {peca_obj.nome_pessoa}")
-            st.write(f"**Custo Total:** R$ {peca_obj.total:.2f}"); st.divider()
+        with st.form(key="nova_peca_form", clear_on_submit=True):
+            st.subheader("Dados da Peça")
+            nome_pessoa = st.text_input("Quem produziu a peça?")
+            tipo_peca = st.text_input("Qual o tipo de peça? (Ex: Copo, Vaso)")
+            data_producao = st.text_input("Qual a data de produção? (DD/MM/AAAA)")
+            uploaded_file = st.file_uploader("Anexar foto da peça", type=["png", "jpg", "jpeg"])
+            st.subheader("Medidas")
+            peso_kg = st.number_input("Peso (kg)?", min_value=0.0, format="%.3f")
+            altura_cm = st.number_input("Altura (cm)?", min_value=0.0, format="%.2f")
+            largura_cm = st.number_input("Largura (cm)?", min_value=0.0, format="%.2f")
+            profundidade_cm = st.number_input("Profundidade (cm)?", min_value=0.0, format="%.2f")
+            st.subheader("Custos de Material")
+            tipo_argila_escolha = st.radio("Qual argila foi usada?",
+                                           ("Argila Própria", f"Argila do Ateliê (R$ {PRECO_ARGILA_ATELIE_KG}/kg)"), index=0)
+            preco_argila_propria_input = 0.0
+            if tipo_argila_escolha == "Argila Própria":
+                tipo_argila_final = 'propria'
+                preco_argila_propria_input = st.number_input("Preço do kg da sua argila? (R$)", min_value=0.0, format="%.2f")
+            else:
+                tipo_argila_final = 'atelie'
             
-            if st.button(f"Confirmar Exclusão Permanente de '{peca_obj.tipo_peca}'", type="primary"):
-                with st.spinner("Excluindo peça..."):
-                    if excluir_peca_db(peca_obj):
-                        st.success("Peça excluída com sucesso!")
-                        st.session_state.inventario = [p for p in st.session_state.inventario if p.id != peca_obj.id]
-                        st.rerun()
-                    else: st.error("Falha ao excluir a peça.")
+            submit_button = st.form_submit_button(label="Adicionar e Salvar Peça")
+
+        if submit_button:
+            if not nome_pessoa or not tipo_peca or not data_producao or peso_kg == 0:
+                st.error("Por favor, preencha pelo menos o Nome, Tipo, Data e Peso (peso não pode ser zero).")
+            else:
+                with st.spinner("A criar e salvar a nova peça..."):
+                    nova_peca = Peca(
+                        data_producao=data_producao, nome_pessoa=nome_pessoa, tipo_peca=tipo_peca,
+                        peso_kg=peso_kg, altura_cm=altura_cm, largura_cm=largura_cm,
+                        profundidade_cm=profundidade_cm, 
+                        tipo_argila=tipo_argila_final, preco_argila_propria=preco_argila_propria_input
+                    )
+                    if salvar_nova_peca(nova_peca, uploaded_file):
+                        st.success(f"✅ Peça '{nova_peca.tipo_peca}' adicionada e salva no Supabase!")
+                        st.balloons(); st.session_state.inventario.insert(0, nova_peca) 
+                    else: st.error("Erro ao salvar os dados no Supabase.")
+
+    # PÁGINA 4: EXCLUIR PEÇA
+    elif st.session_state.pagina_atual == "Excluir Peça":
+        st.header("Excluir Peça")
+        st.warning("Atenção: Esta ação é permanente e não pode ser desfeita.")
+        
+        inventario = st.session_state.inventario
+        
+        if not inventario:
+            st.info("Não há peças no inventário para excluir.")
+        else:
+            opcoes_pecas = {f"{p.data_producao} - {p.tipo_peca} (por {p.nome_pessoa})": p for p in inventario}
+            peca_selecionada_nome = st.selectbox("Selecione a peça que deseja excluir:", ["Selecione..."] + list(opcoes_pecas.keys()))
+            
+            if peca_selecionada_nome != "Selecione...":
+                peca_obj = opcoes_pecas[peca_selecionada_nome]
+                st.subheader("Você selecionou esta peça:")
+                image_url = get_public_url(peca_obj.image_path)
+                if image_url: st.image(image_url, width=200)
+                st.write(f"**Tipo:** {peca_obj.tipo_peca}"); st.write(f"**Pessoa:** {peca_obj.nome_pessoa}")
+                st.write(f"**Custo Total:** R$ {peca_obj.total:.2f}"); st.divider()
+                
+                if st.button(f"Confirmar Exclusão Permanente de '{peca_obj.tipo_peca}'", type="primary"):
+                    with st.spinner("Excluindo peça..."):
+                        if excluir_peca_db(peca_obj):
+                            st.success("Peça excluída com sucesso!")
+                            st.session_state.inventario = [p for p in st.session_state.inventario if p.id != peca_obj.id]
+                            st.rerun()
+                        else: st.error("Falha ao excluir a peça.")
