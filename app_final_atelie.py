@@ -215,7 +215,7 @@ if st.session_state.pagina_atual == "Home":
     st.write("Bem-vindo ao sistema de gestão de custos do ateliê.")
     
     # --- COLOQUE O LINK DA SUA LOGO AQUI ---
-    LOGO_URL = "https://...supabase.co/.../fotos-pecas/seu-logo.png" # <-- SUBSTITUA PELA URL REAL
+    LOGO_URL = "https://jlrzbcighlymiibcvhte.supabase.co/storage/v1/object/public/fotos-pecas/logo-bal.jpg" # <-- SUBSTITUA PELA URL REAL
     
     if LOGO_URL.startswith("https://"):
         st.image(LOGO_URL, width=300)
